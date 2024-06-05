@@ -73,55 +73,74 @@ elif selected_page == "Home":
         st.subheader("  :bulb: PowerBI")
 
 elif selected_page == "Dashboard":
-    power_bi_report_url = "D:\\GUVI Class\\Project Videos\\Airbnb_analysis-Final.pbix"
-    st.components.v1.iframe(power_bi_report_url, height=1200)
+    power_bi_report_url = "https://app.powerbi.com/reportEmbed?reportId=********************&autoAuth=true&ctid=00f9cda3-****-44e5-aa0b-aba3add6539f"
+    st.markdown(f'<iframe title="Airbnb DashBoard" width="1600" height="700" src="{power_bi_report_url}" frameborder="0" allowFullScreen="true"></iframe>',unsafe_allow_html=True)
 
 elif selected_page == "Analysis Zone":
-    fl = st.file_uploader(":file_folder: Upload a file", type=(["csv", "txt", "xlsx", "xls"]))
-    if fl is not None:
-        filename = fl.name
-        st.write(filename)
-        df = pd.read_csv(filename, encoding="ISO-8859-1")
-    else:
-        os.chdir(r"D:\GUVI Class\Project Videos")
-        df = pd.read_csv("D:\GUVI Class\Project Videos\Airbnb-OriginalFile.csv", encoding="ISO-8859-1")
-        st.set_option('deprecation.showPyplotGlobalUse', False)
+    st.set_option('deprecation.showPyplotGlobalUse', False)
+    uploaded_file = st.file_uploader(":file_folder: Upload a file", type=["csv", "txt", "xlsx", "xls"])
+    if uploaded_file is not None:
+            file_extension = uploaded_file.name.split('.')[-1]
+            try:
+                if file_extension == 'csv':
+                    df = pd.read_csv(uploaded_file, encoding='utf-8')
+                elif file_extension in ['xlsx', 'xls']:
+                    df = pd.read_excel(uploaded_file)
+                elif file_extension == 'txt':
+                    df = pd.read_csv(uploaded_file, delimiter='\t', encoding='utf-8')
+                st.success("File uploaded successfully!")
+            
+                if st.button("Perform Data Wrangling Process"):
+                    with st.spinner("Please wait for process completion..."):
+                        df, success = data_wrangling(df)
+                        if success:
+                            st.success("Data wrangling process completed successfully!")
+                        else:
+                            st.error("Data wrangling process failed. Please check your file.")
         tab1, tab2,tab3,tab4,tab5 = st.tabs(['Property', 'Availability','Price','Host Reviews','Map'])
         with tab1:
-            # Sidebar filters
-            Country = st.sidebar.multiselect("Pick your country", ["Select All"] + list(df["Country"].unique()))
+            country_key = "country_multiselect_tab1"
+            Country = st.sidebar.multiselect("Select Country", ["Select All"] + list(df["Country"].unique()), key=country_key)
             if "Select All" in Country:
-                Country = df["Country"].unique()
+                    Country = df["Country"].unique()
 
-            Neighbourhood = st.sidebar.multiselect("Pick the neighbourhood", ["Select All"] + list(df["Neighbourhood"].unique()))
+            # Filter neighborhoods based on the selected countries
+            filtered_neighbourhoods = df[df["Country"].isin(Country)]["Neighbourhood"].unique()
+            # Remove "Not Available" from the neighborhoods list
+            filtered_neighbourhoods = [neighbourhood for neighbourhood in filtered_neighbourhoods if neighbourhood != "Not Available"]
+
+            neighbourhood_key = "neighbourhood_multiselect_tab1"
+            Neighbourhood = st.sidebar.multiselect("Select Neighbourhood", ["Select All"] + list(filtered_neighbourhoods), key=neighbourhood_key)
             if "Select All" in Neighbourhood:
-                Neighbourhood = df["Neighbourhood"].unique()
-
-            # Filter the data based on country and neighbourhood
-            df2 = df[df["Country"].isin(Country)]
-            df3 = df2[df2["Neighbourhood"].isin(Neighbourhood)]
+                            Neighbourhood = filtered_neighbourhoods
+                            
+            # Filter the data based on selected countries and neighborhoods
+            df_filtered = df[df["Country"].isin(Country) & df["Neighbourhood"].isin(Neighbourhood)]   
 
             # Plotting
             col1, col2 = st.columns(2)
             with col1:
                 plt.figure(figsize=(10, 8))
-                ax = sns.countplot(data=df3, y='Property_type', order=df3["Property_type"].value_counts().index[:10], palette='husl')
+                ax = sns.countplot(data=df_filtered, y='Property_type', order=df_filtered['Property_type'].value_counts().index[:10], palette='husl')
                 # Annotate count values on bars
                 for p in ax.patches:
-                    ax.annotate(f'{int(p.get_width())}', (p.get_width() + 0.1, p.get_y() + p.get_height() / 2), ha='left', va='center')
+                        ax.annotate(f'{int(p.get_width())}', (p.get_width() + 0.1, p.get_y() + p.get_height() / 2), ha='left', va='center')
                 ax.set_title("Top 10 Property Types available")
                 st.pyplot()
             
             with col2:
                 # Group by 'Property_type' and count the occurrences
-                grouped_df = df3.groupby('Property_type').size().reset_index(name='Number')
+                 grouped_df = df_filtered['Property_type'].value_counts().reset_index(name='Number')
 
-                # Sort by Number in descending order and get the top 10
+                 # Sort by Number in descending order and get the top 10
                 top_property_types = grouped_df.sort_values(by='Number', ascending=False).head(10)
 
+                # Set 'Property_type' as the index
+                grouped_df.set_index('Property_type', inplace=True)
+
                 # Create a pie chart using Plotly Express
-                fig = px.pie(top_property_types,
-                            names='Property_type',
+                fig = px.pie(grouped_df,
+                            names=grouped_df.index,  # Use the index as names (Property_type)
                             values='Number',
                             title='Top 10 Property Types by Number of Listings',
                             color_discrete_sequence=px.colors.qualitative.Bold)
